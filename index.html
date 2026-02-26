@@ -42,10 +42,10 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
     <script>
-        let newsLayer;
-
         // Initialize the map
         const map = L.map('map').setView([20, 0], 2);
+
+        let newsLayer = L.layerGroup().addTo(map);
 
         // Add CartoDB Dark Matter basemap
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -59,6 +59,8 @@
             try {
                 const response = await fetch('live_news.geojson');
                 const data = await response.json();
+
+                console.log('Data loaded:', data);
 
                 if (newsLayer) {
                     map.removeLayer(newsLayer);
