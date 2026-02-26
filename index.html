@@ -57,7 +57,7 @@
         // Load news data from the API
         async function loadNewsData() {
             try {
-                const response = await fetch('./live_news.geojson');
+                const response = await fetch('live_news.geojson');
                 const data = await response.json();
 
                 if (newsLayer) {
