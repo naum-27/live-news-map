@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDELT Live News Map</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .map-title {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <div class="map-title">Live Global News Tracker</div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <script>
+        let newsLayer;
+
+        // Initialize the map
+        const map = L.map('map').setView([20, 0], 2);
+
+        // Add CartoDB Dark Matter basemap
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        // Load news data from the API
+        async function loadNewsData() {
+            try {
+                const response = await fetch('./live_news.geojson');
+                const data = await response.json();
+
+                if (newsLayer) {
+                    map.removeLayer(newsLayer);
+                }
+
+                newsLayer = L.geoJSON(data, {
+                    pointToLayer: function (feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            radius: 5,
+                            fillColor: "#ff7800",
+                            color: "#000",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+                    },
+                    onEachFeature: function (feature, layer) {
+                        if (feature.properties && feature.properties.SourceURL) {
+                            layer.bindPopup(`<a href="${feature.properties.SourceURL}" target="_blank">Read Article</a>`);
+                        }
+                    }
+                }).addTo(map);
+            } catch (error) {
+                console.error("Error loading news data:", error);
+            }
+        }
+
+        // Execute setup
+        loadNewsData();
+    </script>
+</body>
+
+</html>
