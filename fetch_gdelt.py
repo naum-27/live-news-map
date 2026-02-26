@@ -56,16 +56,17 @@ def process_gdelt_url(url, columns):
         # Read the downloaded zip file directly using pandas
         df = pd.read_csv(filename, sep='\t', names=columns, compression='zip', low_memory=False)
         
-        # Drop rows without coordinates
+        # Coerce numeric columns, turning any non-numeric values to NaN
+        df['ActionGeo_Lat'] = pd.to_numeric(df['ActionGeo_Lat'], errors='coerce')
+        df['ActionGeo_Long'] = pd.to_numeric(df['ActionGeo_Long'], errors='coerce')
+        df['AvgTone'] = pd.to_numeric(df['AvgTone'], errors='coerce')
+        
+        # Drop rows without valid coordinates
         df = df.dropna(subset=['ActionGeo_Lat', 'ActionGeo_Long'])
         
         for _, row in df.iterrows():
-            # Check for valid coordinate types to avoid serialization issues
-            try:
-                lat = float(row['ActionGeo_Lat'])
-                lon = float(row['ActionGeo_Long'])
-            except (ValueError, TypeError):
-                continue
+            lat = float(row['ActionGeo_Lat'])
+            lon = float(row['ActionGeo_Long'])
                 
             feature = {
                 "type": "Feature",
@@ -75,8 +76,8 @@ def process_gdelt_url(url, columns):
                 },
                 "properties": {
                     "SourceURL": row['SourceURL'] if pd.notnull(row['SourceURL']) else "",
-                    "EventCode": row['EventCode'],
-                    "Tone": row['AvgTone']
+                    "EventCode": row['EventCode'] if pd.notnull(row['EventCode']) else None,
+                    "Tone": float(row['AvgTone']) if pd.notnull(row['AvgTone']) else None
                 }
             }
             features.append(feature)
@@ -111,6 +112,7 @@ def fetch_data():
         "IsRootEvent", "EventCode", "EventBaseCode", "EventRootCode", "QuadClass",
         "GoldsteinScale", "NumMentions", "NumSources", "NumArticles", "AvgTone",
         "Actor1Geo_Type", "Actor1Geo_FullName", "Actor1Geo_CountryCode", "Actor1Geo_ADM1Code", "Actor1Geo_Lat", "Actor1Geo_Long", "Actor1Geo_FeatureID",
+        "Actor2Geo_Type", "Actor2Geo_FullName", "Actor2Geo_CountryCode", "Actor2Geo_ADM1Code", "Actor2Geo_Lat", "Actor2Geo_Long", "Actor2Geo_FeatureID",
         "ActionGeo_Type", "ActionGeo_FullName", "ActionGeo_CountryCode", "ActionGeo_ADM1Code", "ActionGeo_Lat", "ActionGeo_Long", "ActionGeo_FeatureID",
         "DATEADDED", "SourceURL"
     ]
@@ -136,7 +138,7 @@ def fetch_data():
     
     # Overwrite the live_news.geojson with the new merged events
     with open(GEOJSON_FILE, 'w') as f:
-        json.dump(geojson, f)
+        json.dump(geojson, f, allow_nan=False)
         
     print(f"Success! Saved {total_events} events to {GEOJSON_FILE}.")
 
