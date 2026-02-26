@@ -1,107 +1,62 @@
-import requests
-import sys
-import io
-import zipfile
 import pandas as pd
+import requests
+import gzip
+import os
 import json
-import time
-from datetime import datetime
 
-def get_latest_gdelt_export_url():
-    url = "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        
-        for line in response.text.strip().split('\n'):
-            if line.strip().endswith('.export.CSV.zip'):
-                parts = line.split()
-                if len(parts) >= 3:
-                    return parts[2]
-                
-        print("Could not find the export.CSV.zip URL in the response.")
-        return None
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching data: {e}")
-        return None
+# Configuration
+GDELT_URL = "http://data.gdeltproject.org/gdeltv2/last15min.export.CSV.gz"
+CSV_FILE = "latest.csv.gz"
+GEOJSON_FILE = "live_news.geojson"
 
-def create_geojson_features(df):
+def fetch_data():
+    print("Fetching latest 15-minute update from GDELT...")
+    response = requests.get(GDELT_URL)
+    with open(CSV_FILE, 'wb') as f:
+        f.write(response.content)
+
+    # Column names for GDELT v2
+    columns = [
+        "GlobalEventID", "Day", "MonthYear", "Year", "FractionDate",
+        "Actor1Code", "Actor1Name", "Actor1CountryCode", "Actor1KnownGroupCode", "Actor1EthnicCode",
+        "Actor1Religion1Code", "Actor1Religion2Code", "Actor1Type1Code", "Actor1Type2Code", "Actor1Type3Code",
+        "Actor2Code", "Actor2Name", "Actor2CountryCode", "Actor2KnownGroupCode", "Actor2EthnicCode",
+        "Actor2Religion1Code", "Actor2Religion2Code", "Actor2Type1Code", "Actor2Type2Code", "Actor2Type3Code",
+        "IsRootEvent", "EventCode", "EventBaseCode", "EventRootCode", "QuadClass",
+        "GoldsteinScale", "NumMentions", "NumSources", "NumArticles", "AvgTone",
+        "Actor1Geo_Type", "Actor1Geo_FullName", "Actor1Geo_CountryCode", "Actor1Geo_ADM1Code", "Actor1Geo_Lat", "Actor1Geo_Long", "Actor1Geo_FeatureID",
+        "ActionGeo_Type", "ActionGeo_FullName", "ActionGeo_CountryCode", "ActionGeo_ADM1Code", "ActionGeo_Lat", "ActionGeo_Long", "ActionGeo_FeatureID",
+        "DATEADDED", "SourceURL"
+    ]
+
+    df = pd.read_csv(CSV_FILE, sep='\t', names=columns, compression='gzip', low_memory=False)
+
+    # Drop rows without coordinates
+    df = df.dropna(subset=['ActionGeo_Lat', 'ActionGeo_Long'])
+
+    # Convert to GeoJSON
     features = []
     for _, row in df.iterrows():
         feature = {
             "type": "Feature",
             "geometry": {
                 "type": "Point",
-                "coordinates": [row['Longitude'], row['Latitude']]
+                "coordinates": [float(row['ActionGeo_Long']), float(row['ActionGeo_Lat'])]
             },
             "properties": {
+                "SourceURL": row['SourceURL'],
                 "EventCode": row['EventCode'],
-                "SourceURL": row['SourceURL']
+                "Tone": row['AvgTone']
             }
         }
         features.append(feature)
-    return features
 
-def process_gdelt_csv(url):
-    try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        
-        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            csv_filename = z.namelist()[0]
-            with z.open(csv_filename) as csv_file:
-                # GDELT v2 files are tab-separated despite the .CSV extension
-                df = pd.read_csv(
-                    csv_file,
-                    sep='\t',
-                    header=None,
-                    usecols=[26, 48, 49, 60],
-                    names=['EventCode', 'Latitude', 'Longitude', 'SourceURL']
-                )
-                # Clean: Drop rows where Latitude, Longitude, or SourceURL are missing/NaN/null
-                df = df.dropna(subset=['Latitude', 'Longitude', 'SourceURL'])
-                # Additionally drop if they are empty strings
-                df = df[df['SourceURL'] != '']
-                
-                # Type Casting: Ensure Latitude and Longitude are explicitly cast as float
-                # coerce errors so invalid numeric strings are converted to NaN then dropped
-                df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
-                df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
-                
-                # drop the resulting NaNs from coercion
-                df = df.dropna(subset=['Latitude', 'Longitude'])
-                
-                print(f"Total valid rows saved: {len(df)}")
-                # Create GeoJSON features
-                features = create_geojson_features(df)
-                
-                # Bundle into FeatureCollection
-                feature_collection = {
-                    "type": "FeatureCollection",
-                    "features": features
-                }
-                
-                # Export to 'live_news.geojson'
-                with open('live_news.geojson', 'w') as f:
-                    json.dump(feature_collection, f, indent=2)
-                    
-                print(f"Successfully saved {len(features)} features to live_news.geojson")
-                
-    except Exception as e:
-        print(f"Error processing data: {e}")
+    geojson = {"type": "FeatureCollection", "features": features}
+
+    with open(GEOJSON_FILE, 'w') as f:
+        json.dump(geojson, f)
+    
+    print(f"Success! Processed {len(features)} events.")
 
 if __name__ == "__main__":
-    print("Starting continuous GDELT fetcher...")
-    while True:
-        try:
-            latest_url = get_latest_gdelt_export_url()
-            if latest_url:
-                process_gdelt_csv(latest_url)
-            else:
-                print("Failed to get latest URL this cycle.")
-        except Exception as e:
-            print(f"Error in main loop: {e}")
-            
-        print(f"Update successful at: {datetime.now()}")
-        print("Waiting 15 minutes for next fetch...")
-        time.sleep(900)
+    fetch_data()
