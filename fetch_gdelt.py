@@ -4,6 +4,27 @@ import os
 import json
 from datetime import datetime, timedelta
 
+def url_to_title(url):
+    """Derives a headline-style title from the last meaningful path segment of a URL."""
+    if not url or not isinstance(url, str):
+        return ""
+    try:
+        # Strip query string and fragment
+        clean = url.split('?')[0].split('#')[0].rstrip('/')
+        # Take the last non-empty path segment
+        segment = clean.split('/')[-1]
+        if not segment:
+            return ""
+        # Remove common file extensions
+        for ext in ('.html', '.htm', '.php', '.aspx', '.asp'):
+            if segment.lower().endswith(ext):
+                segment = segment[: -len(ext)]
+        # Replace dashes, underscores, and plus signs with spaces, then title-case
+        title = segment.replace('-', ' ').replace('_', ' ').replace('+', ' ')
+        return title.title()
+    except Exception:
+        return ""
+
 # Configuration
 GEOJSON_FILE = "live_news.geojson"
 
@@ -75,6 +96,7 @@ def process_gdelt_url(url, columns):
                     "coordinates": [lon, lat]
                 },
                 "properties": {
+                    "Title": url_to_title(row['SourceURL']) if pd.notnull(row['SourceURL']) else "",
                     "SourceURL": row['SourceURL'] if pd.notnull(row['SourceURL']) else "",
                     "EventCode": row['EventCode'] if pd.notnull(row['EventCode']) else None,
                     "Tone": float(row['AvgTone']) if pd.notnull(row['AvgTone']) else None
