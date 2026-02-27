@@ -45,7 +45,8 @@
         // Initialize the map
         const map = L.map('map').setView([20, 0], 2);
 
-        let newsLayer = L.layerGroup().addTo(map);
+        // Declare newsLayer globally so it is accessible everywhere
+        let newsLayer = null;
 
         // Add CartoDB Dark Matter basemap
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -54,18 +55,22 @@
             maxZoom: 20
         }).addTo(map);
 
-        // Load news data from the API
+        // Load news data from the GeoJSON file
         async function loadNewsData() {
             try {
                 const response = await fetch('live_news.geojson');
                 const data = await response.json();
 
-                console.log('Data loaded:', data);
+                // Debug: verify data arrives in browser
+                console.log('GeoJSON Data:', data);
+                console.log('Total features:', data.features ? data.features.length : 0);
 
+                // Remove old layer if it exists
                 if (newsLayer) {
                     map.removeLayer(newsLayer);
                 }
 
+                // Build the GeoJSON layer with circleMarkers
                 newsLayer = L.geoJSON(data, {
                     pointToLayer: function (feature, latlng) {
                         return L.circleMarker(latlng, {
@@ -79,10 +84,18 @@
                     },
                     onEachFeature: function (feature, layer) {
                         if (feature.properties && feature.properties.SourceURL) {
-                            layer.bindPopup(`<a href="${feature.properties.SourceURL}" target="_blank">Read Article</a>`);
+                            const title = feature.properties.Title || "Headline of the Story";
+                            const popupContent = `<strong>${title}</strong><br><a href="${feature.properties.SourceURL}" target="_blank">Read Article</a>`;
+                            layer.bindPopup(popupContent);
                         }
                     }
                 }).addTo(map);
+
+                // Zoom to fit all dots
+                if (newsLayer.getBounds().isValid()) {
+                    map.fitBounds(newsLayer.getBounds(), { padding: [20, 20] });
+                }
+
             } catch (error) {
                 console.error("Error loading news data:", error);
             }
